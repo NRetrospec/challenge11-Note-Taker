@@ -33,16 +33,22 @@ let activeNote = {};
 
 // Get notes from local storage
 const getNotes = () => {
-  const notes = JSON.parse(localStorage.getItem('notes')) || [];
-  return notes;
+  return fetch('/api/notes')
+    .then(response => response.json())
+    .catch(err => console.error('Error fetching notes:', err));
 };
 
 // Save note to local storage
 const saveNote = (note) => {
-  const notes = getNotes();
-  notes.push(note);
-  localStorage.setItem('notes', JSON.stringify(notes));
-  console.log("Note saved to local storage:", note); // Log the saved note
+  return fetch('/api/notes', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(note)
+  })
+  .then(response => response.json())
+  .catch(err => console.error('Error saving note:', err));
 };
 
 // Render the active note
@@ -50,7 +56,6 @@ const renderActiveNote = () => {
   hide(saveNoteBtn);
   hide(clearBtn);
 
-  // If activeNote has an id, it means it's an existing note
   if (activeNote.id) {
     show(newNoteBtn);
     noteTitle.setAttribute('readonly', true);
@@ -68,20 +73,18 @@ const renderActiveNote = () => {
 
 // Handle note save
 const handleNoteSave = () => {
-  // Create a note object from input fields
   const newNote = {
     title: noteTitle.value,
     text: noteText.value,
-    id: Date.now() // Assign an ID based on the current time
+    id: Date.now()
   };
     
-  console.log("Saving note:", newNote); // Log the note being saved
   saveNote(newNote);
-  noteTitle.value = ''; // Clear the title field
-  noteText.value = ''; // Clear the text area
-  hide(saveNoteBtn); // Hide the Save button
-  hide(clearBtn); // Hide the Clear Form button
-  getAndRenderNotes();
+  noteTitle.value = '';
+  noteText.value = '';
+  hide(saveNoteBtn);
+  hide(clearBtn);
+  renderNoteList();
   renderActiveNote();
 };
 
@@ -93,27 +96,56 @@ const handleNoteView = (e) => {
   renderActiveNote();
 };
 
+// Handle note delete
 const handleNoteDelete = (e) => {
-  e.stopPropagation(); // Prevent the click event from bubbling up
-  const noteToDelete = JSON.parse(e.target.parentElement.getAttribute('data-note'));
-  const notes = getNotes().filter(note => note.id !== noteToDelete.id); // Filter out the deleted note
-  localStorage.setItem('notes', JSON.stringify(notes)); // Update local storage
-  renderNoteList(); // Re-render the note list
+  e.stopPropagation();
+
+  let noteToDelete;
+  try {
+    noteToDelete = JSON.parse(e.target.parentElement.getAttribute('data-note'));
+  } catch (error) {
+    console.error('Error parsing note data:', error);
+    return;
+  }
+
+  fetch(`/api/notes/${noteToDelete.id}`, {
+    method: 'DELETE'
+  })
+  .then(response => {
+    if (!response.ok) {
+      throw new Error('Failed to delete note');
+    }
+
+    if (activeNote.id === noteToDelete.id) {
+      activeNote = {};
+    }
+
+    renderNoteList();
+  })
+  .catch(err => {
+    console.error('Error deleting note:', err);
+  });
 };
 
+// Render the notes list
 const renderNoteList = () => {
-  const notes = getNotes();
-  noteList.innerHTML = ''; // Clear existing notes
+  getNotes().then(notes => {
+    noteList.innerHTML = '';
 
-  if (notes.length === 0) {
-    noteList.append(createLi('No saved Notes', false));
-  } else {
-    notes.forEach((note) => {
-      const li = createLi(note.title);
-      li.dataset.note = JSON.stringify(note);
-      noteList.append(li);
-    });
-  }
+    if (!Array.isArray(notes) || notes.length === 0) {
+      noteList.append(createLi('No saved Notes', false));
+    } else {
+      notes.forEach(note => {
+        const li = createLi(note.title);
+        li.dataset.note = JSON.stringify(note);
+        noteList.append(li);
+      });
+    }
+  }).catch(err => {
+    console.error('Error rendering notes:', err);
+    noteList.innerHTML = '';
+    noteList.append(createLi('Error loading notes', false));
+  });
 };
 
 // Create list item
@@ -138,17 +170,12 @@ const createLi = (text, delBtn = true) => {
   return liEl;
 };
 
-// Get and render notes
-const getAndRenderNotes = () => {
-  renderNoteList();
-};
-
 // Handle new note view
 const handleNewNoteView = () => {
-  activeNote = {}; // Reset activeNote
+  activeNote = {};
   show(saveNoteBtn);
   show(clearBtn);
-  renderActiveNote(); // Render the empty fields
+  renderActiveNote();
 }; 
 
 // Handle clear form action
@@ -179,4 +206,3 @@ if (window.location.pathname === '/notes') {
   clearBtn.addEventListener('click', handleClearForm);
   noteForm.addEventListener('input', handleRenderBtns);
 }
-
